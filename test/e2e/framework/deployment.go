@@ -19,7 +19,7 @@ package framework
 import (
 	"context"
 	"fmt"
-	"strings"
+	"reflect"
 
 	"github.com/onsi/ginkgo/v2"
 	"github.com/onsi/gomega"
@@ -29,11 +29,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-
-	workv1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
-	"github.com/karmada-io/karmada/pkg/util/helper"
-	"github.com/karmada-io/karmada/pkg/util/names"
 )
 
 // CreateDeployment create Deployment.
@@ -59,15 +54,23 @@ func UpdateDeploymentPaused(client kubernetes.Interface, deployment *appsv1.Depl
 	})
 }
 
-// UpdateDeploymentWithSpec update deployment with the given spec.
-func UpdateDeploymentWithSpec(client kubernetes.Interface, namespace, name string, spec appsv1.DeploymentSpec) {
+// UpdateDeploymentWith update deployment with the given mutate function.
+func UpdateDeploymentWith(client kubernetes.Interface, namespace, name string, mutateFunc func(deploy *appsv1.Deployment)) {
 	ginkgo.By(fmt.Sprintf("Update Deployment(%s/%s)", namespace, name), func() {
-		newDeployment, err := client.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
-		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+		gomega.Eventually(func() error {
+			deploy, err := client.AppsV1().Deployments(namespace).Get(context.TODO(), name, metav1.GetOptions{})
+			if err != nil {
+				return err
+			}
 
-		newDeployment.Spec = spec
-		_, err = client.AppsV1().Deployments(namespace).Update(context.TODO(), newDeployment, metav1.UpdateOptions{})
-		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+			deployCopy := deploy.DeepCopy()
+			mutateFunc(deployCopy)
+			if reflect.DeepEqual(deploy, deployCopy) {
+				return nil
+			}
+			_, err = client.AppsV1().Deployments(namespace).Update(context.TODO(), deployCopy, metav1.UpdateOptions{})
+			return err
+		}, PollTimeout, PollInterval).ShouldNot(gomega.HaveOccurred())
 	})
 }
 
@@ -249,29 +252,6 @@ func UpdateDeploymentServiceAccountName(client kubernetes.Interface, deployment 
 			return err
 		}, PollTimeout, PollInterval).ShouldNot(gomega.HaveOccurred())
 	})
-}
-
-// ExtractTargetClustersFrom extract the target cluster names from deployment's related resourceBinding Information.
-func ExtractTargetClustersFrom(c client.Client, deployment *appsv1.Deployment) []string {
-	bindingName := names.GenerateBindingName(deployment.Kind, deployment.Name)
-	binding := &workv1alpha2.ResourceBinding{}
-	gomega.Eventually(func(g gomega.Gomega) (bool, error) {
-		err := c.Get(context.TODO(), client.ObjectKey{Namespace: deployment.Namespace, Name: bindingName}, binding)
-		g.Expect(err).NotTo(gomega.HaveOccurred())
-
-		if !helper.IsBindingScheduled(&binding.Status) {
-			klog.Infof("The ResourceBinding(%s/%s) hasn't been scheduled.", binding.Namespace, binding.Name)
-			return false, nil
-		}
-		return true, nil
-	}, PollTimeout, PollInterval).Should(gomega.Equal(true))
-
-	targetClusterNames := make([]string, 0, len(binding.Spec.Clusters))
-	for _, cluster := range binding.Spec.Clusters {
-		targetClusterNames = append(targetClusterNames, cluster.Name)
-	}
-	klog.Infof("The ResourceBinding(%s/%s) schedule result is: %s", binding.Namespace, binding.Name, strings.Join(targetClusterNames, ","))
-	return targetClusterNames
 }
 
 // CheckDeploymentReadyStatus check the deployment status By checking the replicas
