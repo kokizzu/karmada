@@ -75,8 +75,12 @@ var _ = framework.SerialDescribe("failover testing", func() {
 					},
 				},
 				ClusterTolerations: []corev1.Toleration{
-					*helper.NewNotReadyToleration(2),
-					*helper.NewUnreachableToleration(2),
+					{
+						Key:               framework.TaintClusterNotReady,
+						Operator:          corev1.TolerationOpExists,
+						Effect:            corev1.TaintEffectNoExecute,
+						TolerationSeconds: ptr.To[int64](2),
+					},
 				},
 				SpreadConstraints: []policyv1alpha1.SpreadConstraint{
 					{
@@ -99,7 +103,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 		ginkgo.It("deployment failover testing", func() {
 			var disabledClusters []string
-			targetClusterNames := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+			targetClusterNames := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 
 			ginkgo.By(fmt.Sprintf("add taint %v to the random one cluster", framework.NotReadyTaintTemplate), func() {
 				temp := numOfFailedClusters
@@ -116,7 +120,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 			ginkgo.By("check whether deployment of failed cluster is rescheduled to other available cluster", func() {
 				gomega.Eventually(func() int {
-					targetClusterNames = framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+					targetClusterNames = framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 					for _, targetClusterName := range targetClusterNames {
 						// the target cluster should be overwritten to another available cluster
 						if !testhelper.IsExclude(targetClusterName, disabledClusters) {
@@ -203,7 +207,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 		ginkgo.It("taint Cluster with NoExecute taint", func() {
 			var disabledClusters []string
-			targetClusterNames := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+			targetClusterNames := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 			ginkgo.By(fmt.Sprintf("add taint %v to the random one cluster", taint), func() {
 				temp := numOfFailedClusters
 				for _, targetClusterName := range targetClusterNames {
@@ -219,7 +223,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 			ginkgo.By("check whether deployment of taint cluster is rescheduled to other available cluster", func() {
 				gomega.Eventually(func() int {
-					targetClusterNames = framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+					targetClusterNames = framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 					for _, targetClusterName := range targetClusterNames {
 						// the target cluster should be overwritten to another available cluster
 						if !testhelper.IsExclude(targetClusterName, disabledClusters) {
@@ -312,7 +316,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 		})
 
 		ginkgo.It("application failover with purgeMode graciously when the application come back to healthy on the new cluster", func() {
-			disabledClusters := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+			disabledClusters := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 			ginkgo.By("create an error op", func() {
 				overridePolicy = testhelper.NewOverridePolicyByOverrideRules(policyNamespace, policyName, []policyv1alpha1.ResourceSelector{
 					{
@@ -357,7 +361,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 			ginkgo.By("check whether the failed deployment is rescheduled to other available cluster", func() {
 				gomega.Eventually(func() int {
-					targetClusterNames := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+					targetClusterNames := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 					for _, targetClusterName := range targetClusterNames {
 						// the target cluster should be overwritten to another available cluster
 						if !testhelper.IsExclude(targetClusterName, disabledClusters) {
@@ -388,7 +392,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 				framework.PatchPropagationPolicy(karmadaClient, policy.Namespace, policy.Name, patch, types.JSONPatchType)
 			})
 
-			disabledClusters := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+			disabledClusters := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 			var beginTime time.Time
 			ginkgo.By("create an error op", func() {
 				overridePolicy = testhelper.NewOverridePolicyByOverrideRules(policyNamespace, policyName, []policyv1alpha1.ResourceSelector{
@@ -503,7 +507,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 		})
 
 		ginkgo.It("application failover with purgeMode never", func() {
-			disabledClusters := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+			disabledClusters := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 			ginkgo.By("create an error op", func() {
 				overridePolicy = testhelper.NewOverridePolicyByOverrideRules(policyNamespace, policyName, []policyv1alpha1.ResourceSelector{
 					{
@@ -544,7 +548,7 @@ var _ = framework.SerialDescribe("failover testing", func() {
 
 			ginkgo.By("check whether the failed deployment is rescheduled to other available cluster", func() {
 				gomega.Eventually(func() int {
-					targetClusterNames := framework.ExtractTargetClustersFrom(controlPlaneClient, deployment)
+					targetClusterNames := framework.ExtractTargetClustersFromRB(controlPlaneClient, deployment.Kind, deployment.Namespace, deployment.Name)
 					for _, targetClusterName := range targetClusterNames {
 						// the target cluster should be overwritten to another available cluster
 						if !testhelper.IsExclude(targetClusterName, disabledClusters) {
