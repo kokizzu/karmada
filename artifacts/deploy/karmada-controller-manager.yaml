@@ -35,12 +35,12 @@ spec:
             - /bin/karmada-controller-manager
             - --kubeconfig=/etc/karmada/config/karmada.config
             - --cluster-status-update-frequency=10s
-            - --failover-eviction-timeout=30s
             - --controllers=*,hpaScaleTargetMarker,deploymentReplicasSyncer
             - --feature-gates=AllAlpha=true,AllBeta=true
             - --metrics-bind-address=$(POD_IP):8080
             - --health-probe-bind-address=$(POD_IP):10357
             - --enable-no-execute-taint-eviction=true
+            - --logging-format=json
             - --v=4
           livenessProbe:
             httpGet:
